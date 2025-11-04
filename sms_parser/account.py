@@ -1,3 +1,4 @@
+from config import get_env_variable
 from typing import List
 
 from .constants import COMBINED_WORDS, WALLETS
@@ -7,6 +8,29 @@ from .utils import (
     get_processed_message,
     trim_leading_and_trailing_chars,
 )
+
+
+def load_acc_info(type: str = "CARD") -> dict:
+    """Load account information from environment variable."""
+    if type == "CARD":
+        raw = get_env_variable("CARD_INFO")
+        if not raw.strip():  # if empty or just spaces
+            return {}
+    elif type == "ACCOUNT":
+        raw = get_env_variable("ACC_INFO")
+        if not raw.strip():  # if empty or just spaces
+            return {}
+
+    # Example: "axis:123, hdfc:1234"
+    pairs = (item.strip() for item in raw.split(",") if item.strip())
+    acc_dict = {}
+
+    for pair in pairs:
+        if ":" in pair:
+            key, value = pair.split(":", 1)  # split only once
+            acc_dict[key.strip().lower()] = value.strip()
+
+    return acc_dict
 
 
 def get_card(message: List[str]) -> IAccountInfo:
@@ -36,6 +60,12 @@ def get_card(message: List[str]) -> IAccountInfo:
         if card_index + 1 < len(message):
             card.number = message[card_index + 1]
             card.type = IAccountType.CARD
+
+            if card.number and not card.number.isdigit():
+                for acc, num in load_acc_info("CARD").items():
+                    if acc in message:
+                        card.number = num
+                        break
 
             # Check if number is valid
             try:

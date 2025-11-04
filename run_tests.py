@@ -185,6 +185,7 @@ class ComprehensiveTestSuite:
         print("=" * 60)
 
         test_messages = [
+            "Your slice credit card transaction of Rs. 35.00 on bgl 16 global count is successful. If not you, call - slice"
             "INR 2000 debited from A/c no. XX3423 on 05-02-19 07:27:11 IST at ECS PAY. Avl Bal- INR 2343.23.",
             "Your a/c no. XX1234 has been credited with INR 5,000.00 on 10-03-23 through NEFT. Avl Bal: INR 12,435.50",
             "INR 1,500.00 spent on HDFC Card XX7890 at AMAZON RETAIL on 15-04-23. Avl limit: INR 35,000.00",
@@ -1461,4 +1462,8 @@ Examples:
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    test = ComprehensiveTestSuite()
+    test.test_sms_parser_direct()
+    "Your slice credit card transaction of Rs. 35.00 on \
+        Cisco bgl 16 global count is successful. If not you, call 08048329999 - slice"

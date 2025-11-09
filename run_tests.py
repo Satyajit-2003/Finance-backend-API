@@ -395,8 +395,17 @@ class ComprehensiveTestSuite:
         # Test 2: API endpoints should require auth
         print("\n🚫 Testing API endpoints without authentication...")
         test_endpoints = [
-            ("GET", "/api/v1/stats/July-2025"),
+            ("GET", "/api/v1/stats?month_year=July-2025"),
+            ("GET", "/api/v1/check-auth"),
             ("POST", "/api/v1/parse-sms", {"text": "Test SMS"}),
+            (
+                "POST",
+                "/api/v1/transactions",
+                {
+                    "date": "2025-09-05T14:30:00",
+                    "transaction_data": {"Amount": "150.00"},
+                },
+            ),
         ]
 
         for method, endpoint, *data in test_endpoints:
@@ -457,7 +466,7 @@ class ComprehensiveTestSuite:
 
         try:
             response = requests.get(
-                f"{self.base_url}/api/v1/stats/July-2025",
+                f"{self.base_url}/api/v1/stats?month_year=July-2025",
                 headers=invalid_headers,
                 timeout=5,
             )
@@ -491,6 +500,9 @@ class ComprehensiveTestSuite:
         # Test health check
         self._test_health_endpoint()
 
+        # Test check-auth endpoint
+        self._test_check_auth_endpoint()
+
         # Test SMS logging endpoint
         self._test_sms_logging_endpoint()
 
@@ -503,6 +515,9 @@ class ComprehensiveTestSuite:
         # Test stats endpoints
         self._test_stats_endpoints()
 
+        # Test add transaction endpoint (direct API add)
+        self._test_add_transaction_endpoint()
+
         # Test transaction management endpoints
         self._test_transaction_management()
 
@@ -512,25 +527,113 @@ class ComprehensiveTestSuite:
     def _test_health_endpoint(self):
         """Test health check endpoint."""
         print("\n🔍 Testing health endpoint...")
-
         try:
             response = requests.get(f"{self.base_url}/health", timeout=5)
-
             if response.status_code == 200:
                 print("✅ Health endpoint working")
                 self.test_results["api"]["passed"] += 1
             else:
                 print(f"❌ Health endpoint failed: {response.status_code}")
                 self.test_results["api"]["failed"] += 1
-
         except requests.exceptions.RequestException as e:
             print(f"❌ Health endpoint connection error: {e}")
             print("💡 Make sure Flask server is running: python app.py")
             self.test_results["api"]["failed"] += 1
 
+    def _test_check_auth_endpoint(self):
+        """Test check-auth endpoint with authentication."""
+        print("\n🔍 Testing check-auth endpoint...")
+        try:
+            response = requests.get(
+                f"{self.base_url}/api/v1/check-auth",
+                headers=self.auth_headers,
+                timeout=5,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success") and "API authentication successful" in data.get(
+                    "message", ""
+                ):
+                    print("✅ Check-auth endpoint working")
+                    self.test_results["api"]["passed"] += 1
+                else:
+                    print("❌ Unexpected response structure for check-auth endpoint")
+                    print(f"   Response: {data}")
+                    self.test_results["api"]["failed"] += 1
+            else:
+                print(f"❌ Check-auth endpoint failed: {response.status_code}")
+                self.test_results["api"]["failed"] += 1
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Check-auth endpoint connection error: {e}")
+            self.test_results["api"]["failed"] += 1
+
     def _test_sms_logging_endpoint(self):
         """Test SMS logging endpoint."""
         print("\n🔍 Testing SMS logging endpoint...")
+        test_payload = {
+            "text": "INR 2000 debited from A/c no. XX3423 on 05-02-19 07:27:11 IST at ECS PAY. Avl Bal- INR 2343.23.",
+            "date": "2025-08-14T10:30:00",
+        }
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/v1/log-sms",
+                json=test_payload,
+                headers=self.auth_headers,
+                timeout=10,
+            )
+            if response.status_code == 201:
+                print("✅ SMS logging endpoint working")
+                result = response.json()
+                print(f"📊 Response: {result['success']}")
+                self.test_results["api"]["passed"] += 1
+            elif response.status_code == 200:
+                print("✅ SMS logging endpoint working (invalid transaction)")
+                result = response.json()
+                print(f"📊 Response: {result['success']}")
+                self.test_results["api"]["passed"] += 1
+            else:
+                print(f"❌ SMS logging endpoint failed: {response.status_code}")
+                print(f"Response: {response.text}")
+                self.test_results["api"]["failed"] += 1
+        except requests.exceptions.RequestException as e:
+            print(f"❌ SMS logging endpoint connection error: {e}")
+            self.test_results["api"]["failed"] += 1
+
+    def _test_add_transaction_endpoint(self):
+        """Test add transaction endpoint (direct API add)."""
+        print("\n🔍 Testing add transaction endpoint...")
+        unique_amount = f"{time.time():.2f}"  # Use timestamp as unique amount
+        payload = {
+            "date": "2025-09-05T14:30:00",
+            "transaction_data": {
+                "Amount": unique_amount,
+                "Type": "Test",
+                "Notes": "Direct add test",
+            },
+        }
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/v1/transactions",
+                headers=self.auth_headers,
+                json=payload,
+                timeout=10,
+            )
+            if response.status_code == 201:
+                data = response.json()
+                if data.get("success"):
+                    print("✅ Add transaction endpoint working")
+                    print(f"   Added amount: {payload['transaction_data']['Amount']}")
+                    self.test_results["api"]["passed"] += 1
+                else:
+                    print("❌ Add transaction endpoint returned unsuccessful response")
+                    self.test_results["api"]["failed"] += 1
+            else:
+                print(f"❌ Add transaction endpoint failed: {response.status_code}")
+                print(f"   Response: {response.text}")
+                self.test_results["api"]["failed"] += 1
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Add transaction endpoint connection error: {e}")
+            self.test_results["api"]["failed"] += 1
 
         test_payload = {
             "text": "INR 2000 debited from A/c no. XX3423 on 05-02-19 07:27:11 IST at ECS PAY. Avl Bal- INR 2343.23.",
@@ -539,7 +642,7 @@ class ComprehensiveTestSuite:
 
         try:
             response = requests.post(
-                f"{self.base_url}/api/v1/transactions",
+                f"{self.base_url}/api/v1/log-sms",
                 json=test_payload,
                 headers=self.auth_headers,
                 timeout=10,
@@ -603,7 +706,7 @@ class ComprehensiveTestSuite:
 
         try:
             response = requests.get(
-                f"{self.base_url}/api/v1/sheets/July-2025",
+                f"{self.base_url}/api/v1/sheets?month_year=July-2025",
                 headers=self.auth_headers,
                 timeout=5,
             )
@@ -628,7 +731,7 @@ class ComprehensiveTestSuite:
         # Test specific month stats only (current month stats endpoint removed)
         try:
             response = requests.get(
-                f"{self.base_url}/api/v1/stats/July-2025",
+                f"{self.base_url}/api/v1/stats?month_year=July-2025",
                 headers=self.auth_headers,
                 timeout=10,
             )
@@ -674,7 +777,7 @@ class ComprehensiveTestSuite:
             log_data = {"text": sms_text, "date": f"{test_date}T10:30:00.000Z"}
 
             response = requests.post(
-                f"{self.base_url}/api/v1/transactions",
+                f"{self.base_url}/api/v1/log-sms",
                 headers=self.auth_headers,
                 json=log_data,
                 timeout=15,
@@ -694,7 +797,7 @@ class ComprehensiveTestSuite:
             # Step 2: Get transactions to find our test transaction
             print("  ↳ 2. Getting transactions to find test transaction...")
             response = requests.get(
-                f"{self.base_url}/api/v1/transactions/{test_date}",
+                f"{self.base_url}/api/v1/transactions?date={test_date}",
                 headers={"X-API-KEY": self.api_key},
                 timeout=15,
             )
@@ -772,7 +875,7 @@ class ComprehensiveTestSuite:
             # Step 4: Verify update
             print("  ↳ 4. Verifying update...")
             response = requests.get(
-                f"{self.base_url}/api/v1/transactions/{test_date}",
+                f"{self.base_url}/api/v1/transactions?date={test_date}",
                 headers={"X-API-KEY": self.api_key},
                 timeout=15,
             )
@@ -959,7 +1062,7 @@ class ComprehensiveTestSuite:
         # Test multiple API calls to same endpoint
         print("\n🔍 Testing API endpoint caching...")
 
-        endpoint = f"{self.base_url}/api/v1/stats/July-2025"
+        endpoint = f"{self.base_url}/api/v1/stats?month_year=July-2025"
         times = []
 
         for i in range(3):
@@ -1074,7 +1177,7 @@ class ComprehensiveTestSuite:
         # Log SMS without text field
         try:
             response = requests.post(
-                f"{self.base_url}/api/v1/transactions",
+                f"{self.base_url}/api/v1/log-sms",
                 json={"date": "2025-07-19T10:30:00"},
                 headers=self.auth_headers,
                 timeout=5,
@@ -1098,7 +1201,7 @@ class ComprehensiveTestSuite:
         print("\n🔍 Testing invalid date format...")
         try:
             response = requests.post(
-                f"{self.base_url}/api/v1/transactions",
+                f"{self.base_url}/api/v1/log-sms",
                 json={
                     "text": "This is a longer test SMS message to meet minimum length requirements",
                     "date": "invalid-date",
@@ -1125,7 +1228,7 @@ class ComprehensiveTestSuite:
         print("\n🔍 Testing invalid month-year format...")
         try:
             response = requests.get(
-                f"{self.base_url}/api/v1/stats/invalid-format",
+                f"{self.base_url}/api/v1/stats?month_year=invalid-format",
                 headers=self.auth_headers,
                 timeout=5,
             )
@@ -1312,7 +1415,7 @@ class ComprehensiveTestSuite:
         print("\n🔍 Testing stats endpoint response format...")
         try:
             response = requests.get(
-                f"{self.base_url}/api/v1/stats/July-2025",
+                f"{self.base_url}/api/v1/stats?month_year=July-2025",
                 headers=self.auth_headers,
                 timeout=5,
             )
@@ -1462,8 +1565,4 @@ Examples:
 
 
 if __name__ == "__main__":
-    # main()
-    test = ComprehensiveTestSuite()
-    test.test_sms_parser_direct()
-    "Your slice credit card transaction of Rs. 35.00 on \
-        Cisco bgl 16 global count is successful. If not you, call 08048329999 - slice"
+    main()

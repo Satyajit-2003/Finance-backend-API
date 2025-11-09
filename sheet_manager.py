@@ -363,6 +363,19 @@ class SheetManager:
             self.logger.error(f"Error finding vacant row: {e}")
             return 2  # Default to row 2 if error
 
+    def _get_amount_borne_by_me_formula(self, sheet_name: str) -> str:
+        # Get row number for formula (use the current vacant row)
+        vacant_row = self._find_vacant_row(sheet_name)
+
+        # Get column letters for formula
+        amount_col = SheetConfig.get_column_letter(SheetConfig.HD_AMOUNT)
+        friend_split_col = SheetConfig.get_column_letter(SheetConfig.HD_FRIEND_SPLIT)
+
+        # Build the formula for Amount Borne by Me
+        amount_borne_formula = f"=IF(AND({amount_col}{vacant_row}>0,{friend_split_col}{vacant_row}>=0),{amount_col}{vacant_row}-{friend_split_col}{vacant_row},{amount_col}{vacant_row})"
+
+        return amount_borne_formula
+
     def get_or_create_monthly_sheet(self, date: datetime) -> str:
         """Get existing monthly sheet or create new one within the shared workbook."""
         sheet_name = self._generate_sheet_name(date)
@@ -382,7 +395,7 @@ class SheetManager:
         return sheet_id
 
     def insert_transaction_data(
-        self, transaction_data: Dict[str, Any], date: datetime
+        self, transaction_data: Dict[str, Any], date: datetime, from_sms: bool = True
     ) -> bool:
         """Insert transaction data into the appropriate monthly sheet."""
         try:
@@ -401,7 +414,12 @@ class SheetManager:
             vacant_row = self._find_vacant_row(sheet_name)
 
             # Prepare data for insertion
-            row_data = self._prepare_row_data(transaction_data, date, sheet_name)
+            if from_sms:
+                row_data = self._prepare_row_data(transaction_data, date, sheet_name)
+            else:
+                row_data = self._prepare_flattened_row_data(
+                    transaction_data, date, sheet_name
+                )
 
             # Insert data
             end_col = chr(ord("A") + len(SheetConfig.HEADER_ROW) - 1)
@@ -421,6 +439,32 @@ class SheetManager:
         except Exception as e:
             self.logger.error(f"Error inserting transaction data: {e}")
             return False
+
+    def _prepare_flattened_row_data(
+        self, transaction_data: Dict[str, Any], date: datetime, sheet_name: str
+    ) -> List[str]:
+        """Prepare flattened row data for insertion."""
+        account = transaction_data.get("Account", "ACCOUNT - 1234")
+        amount = transaction_data.get("Amount", "0")
+        type_ = transaction_data.get("Type", "Select")
+        friend_split = transaction_data.get("Friend Split", "0")
+        notes = transaction_data.get("Notes", "")
+
+        # Get formula for Amount Borne by Me
+        amount_borne_formula = self._get_amount_borne_by_me_formula(sheet_name)
+
+        # Prepare row data according to new 8-column structure
+        row_data = [
+            date.strftime("%Y-%m-%d"),  # Date (Column A)
+            "Manual - debit",  # Description (Column B - default for manual entry)
+            amount,  # Amount (Column C)
+            type_,  # Type (Column D - dropdown)
+            account,  # Account (Column E)
+            friend_split,  # Friend Split (Column F)
+            amount_borne_formula,  # Amount Borne by Me (Column G - formula)
+            notes,  # Notes (Column H)
+        ]
+        return row_data
 
     def _prepare_row_data(
         self, transaction_data: Dict[str, Any], date: datetime, sheet_name: str
@@ -450,15 +494,8 @@ class SheetManager:
             except ValueError:
                 amount = "0"
 
-        # Get row number for formula (use the current vacant row)
-        vacant_row = self._find_vacant_row(sheet_name)
-
-        # Get column letters for formula
-        amount_col = SheetConfig.get_column_letter(SheetConfig.HD_AMOUNT)
-        friend_split_col = SheetConfig.get_column_letter(SheetConfig.HD_FRIEND_SPLIT)
-
-        # Build the formula for Amount Borne by Me
-        amount_borne_formula = f"=IF(AND({amount_col}{vacant_row}>0,{friend_split_col}{vacant_row}>=0),{amount_col}{vacant_row}-{friend_split_col}{vacant_row},{amount_col}{vacant_row})"
+        # Get formula for Amount Borne by Me
+        amount_borne_formula = self._get_amount_borne_by_me_formula(sheet_name)
 
         # Prepare row data according to new 8-column structure
         row_data = [

@@ -125,6 +125,24 @@ def health_check():
     )
 
 
+@app.route(f"{AppConfig.API_PREFIX}/check-auth", methods=["GET"])
+def check_auth():
+    """Endpoint to check if API authentication is working."""
+    return (
+        jsonify(
+            {
+                "success": True,
+                "message": "API authentication successful",
+                "data": {
+                    "timestamp": datetime.now().isoformat(),
+                    "version": AppConfig.API_VERSION,
+                },
+            }
+        ),
+        200,
+    )
+
+
 @app.route(f"{AppConfig.API_PREFIX}/parse-sms", methods=["POST"])
 def test_parser():
     """
@@ -206,22 +224,25 @@ def test_parser():
         )
 
 
-@app.route(f"{AppConfig.API_PREFIX}/sheets/<string:month_year>", methods=["GET"])
-def get_sheet_info(month_year: str):
+@app.route(f"{AppConfig.API_PREFIX}/sheets", methods=["GET"])
+def get_sheet_info():
     """
     Get information about a specific monthly sheet.
 
-    URL format: /api/v1/sheets/July-2025
+    URL format: /api/v1/sheets?month_year=July-2025
     """
     try:
         # Parse month-year
+        if "month_year" not in request.args:
+            raise BadRequest("'month_year' query parameter is required")
+
+        month_year = request.args.get("month_year")
         try:
             month_name, year = month_year.split("-")
             year = int(year)
 
             # Create datetime for the first day of the month
             date = datetime.strptime(f"{month_name} {year}", "%B %Y")
-
         except (ValueError, IndexError):
             raise BadRequest("Invalid month-year format. Use format: 'July-2025'")
 
@@ -286,12 +307,12 @@ def get_sheet_info(month_year: str):
         )
 
 
-@app.route(f"{AppConfig.API_PREFIX}/stats/<string:month_year>", methods=["GET"])
-def get_monthly_spend_stats(month_year: str):
+@app.route(f"{AppConfig.API_PREFIX}/stats", methods=["GET"])
+def get_monthly_spend_stats():
     """
     Get monthly spending statistics for a specific month.
 
-    URL format: /api/v1/stats/July-2025
+    URL format: /api/v1/stats?month_year=July-2025
 
     Returns spending totals grouped by transaction type.
     """
@@ -309,6 +330,9 @@ def get_monthly_spend_stats(month_year: str):
             )
 
         # Validate month_year format
+        if "month_year" not in request.args:
+            raise BadRequest("'month_year' query parameter is required")
+        month_year = request.args.get("month_year")
         try:
             month_name, year_str = month_year.split("-")
             year = int(year_str)
@@ -385,7 +409,7 @@ def get_monthly_spend_stats(month_year: str):
         )
 
 
-@app.route(f"{AppConfig.API_PREFIX}/transactions", methods=["POST"])
+@app.route(f"{AppConfig.API_PREFIX}/log-sms", methods=["POST"])
 def log_sms_transaction():
     """
     Log SMS transaction to Google Sheets.
@@ -419,7 +443,6 @@ def log_sms_transaction():
         # Parse date first (before text validation)
         try:
             date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            print(f"Parsed date: {date}")
         except ValueError:
             raise BadRequest(
                 "Invalid date format. Use ISO format (YYYY-MM-DDTHH:MM:SS)"
@@ -547,12 +570,113 @@ def log_sms_transaction():
         )
 
 
-@app.route(f"{AppConfig.API_PREFIX}/transactions/<string:date>", methods=["GET"])
-def get_transactions_by_date(date: str):
+@app.route(f"{AppConfig.API_PREFIX}/transactions", methods=["POST"])
+def add_transaction():
+    """
+    Add a transaction directly via API.
+
+    Expected JSON payload:
+    {
+        "date": "2025-09-05T14:30:00",  # ISO format
+        "transaction_data": {
+            "Amount": "150.00", // Required
+            "Type": "Grocery",
+            "Account": "ACCOUNT|CARD - XXXX"
+            "Friend Split": "75.00",
+            "Notes": "Weekly shopping"
+        }
+    }
+    """
+    try:
+        if not request.is_json:
+            raise BadRequest("Request must be JSON")
+
+        data = request.get_json()
+        date_str = data.get("date")
+        transaction_data = data.get("transaction_data")
+
+        if not date_str:
+            raise BadRequest("'date' field is required")
+
+        if not transaction_data:
+            raise BadRequest("'transaction_data' field is required")
+
+        if not isinstance(transaction_data, dict):
+            raise BadRequest("'transaction_data' must be a JSON object")
+
+        if "Amount" not in transaction_data:
+            raise BadRequest("'Amount' field is required in 'transaction_data'")
+
+        if not sheet_manager:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Service unavailable",
+                        "message": "Google Sheets service is not available",
+                    }
+                ),
+                503,
+            )
+
+        # Parse date first (before text validation)
+        try:
+            date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        except ValueError:
+            raise BadRequest(
+                "Invalid date format. Use ISO format (YYYY-MM-DDTHH:MM:SS)"
+            )
+
+        # Insert into Google Sheets
+        success = sheet_manager.insert_transaction_data(
+            transaction_data, date, from_sms=False
+        )
+
+        if success:
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "message": "Transaction added successfully",
+                        "data": {"transaction_data": transaction_data},
+                    }
+                ),
+                201,
+            )
+        else:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Database error",
+                        "message": "Failed to add transaction to Google Sheets",
+                    }
+                ),
+                500,
+            )
+
+    except BadRequest as e:
+        logger.warning(f"Bad request in add_transaction: {e}")
+        return (
+            jsonify({"success": False, "error": str(e), "message": "Bad request"}),
+            400,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in add_transaction: {e}")
+        return (
+            jsonify(
+                {"success": False, "error": str(e), "message": "Internal server error"}
+            ),
+            500,
+        )
+
+
+@app.route(f"{AppConfig.API_PREFIX}/transactions", methods=["GET"])
+def get_transactions_by_date():
     """
     Get all transactions for a specific date.
 
-    URL format: /api/v1/transactions/2025-09-05
+    URL format: /api/v1/transactions?date=2025-09-05
 
     Returns all transactions for the specified date.
     """
@@ -570,7 +694,10 @@ def get_transactions_by_date(date: str):
             )
 
         # Validate and parse date
+        if "date" not in request.args:
+            raise BadRequest("'date' query parameter is required")
         try:
+            date = request.args.get("date")
             parsed_date = datetime.strptime(date, "%Y-%m-%d")
         except ValueError:
             raise BadRequest("Invalid date format. Use format: 'YYYY-MM-DD'")

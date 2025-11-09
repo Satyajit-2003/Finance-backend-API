@@ -64,11 +64,15 @@ The API will be available at `http://localhost:5000` (development) or configured
 All API endpoints (except `/health`) require authentication using the `X-API-KEY` header:
 
 ```bash
-# Valid request
-curl -X POST http://localhost:5000/api/v1/log \
-  -H "X-API-KEY: your-secure-api-key-here" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Your SMS message here"}'
+# Check auth
+curl -i http://localhost:5000/api/v1/check-auth \
+   -H "X-API-KEY: your-secure-api-key-here"
+
+# Log SMS (requires date in ISO format)
+curl -X POST http://localhost:5000/api/v1/log-sms \
+   -H "X-API-KEY: your-secure-api-key-here" \
+   -H "Content-Type: application/json" \
+   -d '{"text": "Your SMS message here", "date": "2025-07-14T10:30:00"}'
 
 # Health check (no auth required)
 curl http://localhost:5000/health
@@ -76,13 +80,18 @@ curl http://localhost:5000/health
 
 ## API Endpoints
 
-| Endpoint                      | Method | Auth Required | Description                     |
-| ----------------------------- | ------ | ------------- | ------------------------------- |
-| `/health`                     | GET    | No            | Health check endpoint           |
-| `/api/v1/log`                 | POST   | Yes           | Log SMS transaction             |
-| `/api/v1/parse-sms`           | POST   | Yes           | Test SMS parsing                |
-| `/api/v1/sheets/{month-year}` | GET    | Yes           | Get sheet information           |
-| `/api/v1/stats/{month-year}`  | GET    | Yes           | Get monthly spending statistics |
+| Endpoint                               | Method | Auth Required | Description                                   |
+| -------------------------------------- | ------ | ------------- | --------------------------------------------- |
+| `/health`                              | GET    | No            | Health check endpoint                         |
+| `/api/v1/check-auth`                   | GET    | Yes           | Verify API key authentication                 |
+| `/api/v1/log-sms`                      | POST   | Yes           | Parse SMS and log transaction to Google Sheet |
+| `/api/v1/parse-sms`                    | POST   | Yes           | Test SMS parsing (no write)                   |
+| `/api/v1/sheets?month_year=July-2025`  | GET    | Yes           | Get sheet information                         |
+| `/api/v1/stats?month_year=July-2025`   | GET    | Yes           | Get monthly spending statistics               |
+| `/api/v1/transactions`                 | POST   | Yes           | Add transaction directly (JSON object)        |
+| `/api/v1/transactions?date=YYYY-MM-DD` | GET    | Yes           | Get transactions for a specific date          |
+| `/api/v1/transactions`                 | PATCH  | Yes           | Update transaction fields                     |
+| `/api/v1/transactions`                 | DELETE | Yes           | Delete transaction row                        |
 
 See `endpoints.md` for detailed API documentation with examples.
 

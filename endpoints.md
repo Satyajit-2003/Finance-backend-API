@@ -10,16 +10,18 @@ http://localhost:5000
 
 ## 📋 API Endpoints Overview
 
-| Endpoint                      | Method | Description                       | Authentication |
-| ----------------------------- | ------ | --------------------------------- | -------------- |
-| `/health`                     | GET    | Health check                      | None           |
-| `/api/v1/transactions`        | POST   | Log SMS transaction               | X-API-KEY      |
-| `/api/v1/parse-sms`           | POST   | Test SMS parsing                  | X-API-KEY      |
-| `/api/v1/sheets/{month-year}` | GET    | Get sheet information             | X-API-KEY      |
-| `/api/v1/stats/{month-year}`  | GET    | Get specific month spending stats | X-API-KEY      |
-| `/api/v1/transactions/{date}` | GET    | Get transactions by date          | X-API-KEY      |
-| `/api/v1/transactions`        | PATCH  | Update transaction fields         | X-API-KEY      |
-| `/api/v1/transactions`        | DELETE | Delete transaction row            | X-API-KEY      |
+| Endpoint                               | Method | Description                       | Authentication |
+| -------------------------------------- | ------ | --------------------------------- | -------------- |
+| `/health`                              | GET    | Health check                      | None           |
+| `/api/v1/check-auth`                   | GET    | Check auth status                 | X-API-KEY      |
+| `/api/v1/log-sms`                      | POST   | Log SMS transaction               | X-API-KEY      |
+| `/api/v1/parse-sms`                    | POST   | Test SMS parsing                  | X-API-KEY      |
+| `/api/v1/sheets?month_year=July-2025`  | GET    | Get sheet information             | X-API-KEY      |
+| `/api/v1/stats?month_year=July-2025`   | GET    | Get specific month spending stats | X-API-KEY      |
+| `/api/v1/transactions?date=YYYY-MM-DD` | GET    | Get transactions by date          | X-API-KEY      |
+| `/api/v1/transactions`                 | POST   | Add transaction directly          | X-API-KEY      |
+| `/api/v1/transactions`                 | PATCH  | Update transaction fields         | X-API-KEY      |
+| `/api/v1/transactions`                 | DELETE | Delete transaction row            | X-API-KEY      |
 
 **Note**: All API responses follow a consistent structure with `success`, `data`/`error`, and `message` fields.
 
@@ -95,9 +97,33 @@ curl http://localhost:5000/health
 
 ---
 
-### 2. Log SMS Transaction
+### 2. Check Authentication
 
-**Endpoint**: `POST /api/v1/transactions`
+**Endpoint**: `GET /api/v1/check-auth`
+
+**Description**: Verify that your API key is valid and authentication middleware is configured.
+
+**Headers**:
+
+```
+X-API-KEY: your-api-key-here
+```
+
+**Response** (200):
+
+```json
+{
+  "success": true,
+  "message": "API authentication successful",
+  "data": { "timestamp": "2025-07-16T10:30:00.000Z", "version": "1.0.0" }
+}
+```
+
+---
+
+### 3. Log SMS Transaction
+
+**Endpoint**: `POST /api/v1/log-sms`
 
 **Description**: Parse SMS text and log the transaction to Google Sheets.
 
@@ -108,7 +134,7 @@ curl http://localhost:5000/health
 ```json
 {
   "text": "SMS text content",
-  "date": "2025-07-14T10:30:00" // ISO format, optional (defaults to current time)
+  "date": "2025-07-14T10:30:00" // ISO format, required
 }
 ```
 
@@ -187,7 +213,7 @@ curl http://localhost:5000/health
 **Example**:
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/transactions \
+curl -X POST http://localhost:5000/api/v1/log-sms \
   -H "Content-Type: application/json" \
   -H "X-API-KEY: your-api-key-here" \
   -d '{
@@ -268,7 +294,7 @@ curl -X POST http://localhost:5000/api/v1/parse-sms \
 
 ### 4. Get Sheet Information
 
-**Endpoint**: `GET /api/v1/sheets/{month-year}`
+**Endpoint**: `GET /api/v1/sheets?month_year={month-year}`
 
 **Description**: Get information about a specific monthly sheet.
 
@@ -315,14 +341,14 @@ curl -X POST http://localhost:5000/api/v1/parse-sms \
 **Example**:
 
 ```bash
-curl http://localhost:5000/api/v1/sheets/July-2025
+curl "http://localhost:5000/api/v1/sheets?month_year=July-2025" -H "X-API-KEY: your-api-key-here"
 ```
 
 ---
 
 ### 5. Get Monthly Spending Statistics
 
-**Endpoint**: `GET /api/v1/stats/{month-year}`
+**Endpoint**: `GET /api/v1/stats?month_year={month-year}`
 
 **Description**: Get spending statistics for a specific month.
 
@@ -423,14 +449,14 @@ curl http://localhost:5000/api/v1/sheets/July-2025
 **Example**:
 
 ```bash
-curl http://localhost:5000/api/v1/stats/July-2025
+curl "http://localhost:5000/api/v1/stats?month_year=July-2025" -H "X-API-KEY: your-api-key-here"
 ```
 
 ---
 
 ### 6. Get Transactions by Date
 
-**Endpoint**: `GET /api/v1/transactions/{date}`
+**Endpoint**: `GET /api/v1/transactions?date={YYYY-MM-DD}`
 
 **Description**: Retrieve all transactions for a specific date.
 
@@ -496,12 +522,56 @@ X-API-KEY: your-api-key-here
 
 ```bash
 curl -H "X-API-KEY: your-api-key" \
-     http://localhost:5000/api/v1/transactions/2025-09-05
+     "http://localhost:5000/api/v1/transactions?date=2025-09-05"
 ```
 
 ---
 
-### 7. Update Transaction Fields
+### 7. Add Transaction Directly
+
+**Endpoint**: `POST /api/v1/transactions`
+
+**Description**: Add a transaction directly by providing a JSON object (no SMS parsing).
+
+**Headers**:
+
+```
+Content-Type: application/json
+X-API-KEY: your-api-key-here
+```
+
+**Request Body**:
+
+```json
+{
+  "date": "2025-09-05T14:30:00",
+  "transaction_data": {
+    "Amount": "150.00",
+    "Type": "Grocery",
+    "Notes": "Weekly shopping"
+  }
+}
+```
+
+**Success Response** (201):
+
+```json
+{
+  "success": true,
+  "message": "Transaction added successfully",
+  "data": {
+    "transaction_data": {
+      "Amount": "150.00",
+      "Type": "Grocery",
+      "Notes": "Weekly shopping"
+    }
+  }
+}
+```
+
+---
+
+### 8. Update Transaction Fields
 
 **Endpoint**: `PATCH /api/v1/transactions`
 
@@ -591,7 +661,7 @@ curl -X PATCH \
 
 ---
 
-### 8. Delete Transaction Row
+### 9. Delete Transaction Row
 
 **Endpoint**: `DELETE /api/v1/transactions`
 
@@ -675,7 +745,7 @@ curl -X DELETE \
 
 ### Statistics Endpoints Caching
 
-The statistics endpoints (`/api/v1/stats` and `/api/v1/stats/{month-year}`) implement caching for performance:
+The statistics endpoint (`/api/v1/stats?month_year=...`) implements caching for performance:
 
 - **Cache TTL**: 50 minutes (3000 seconds)
 - **Cache Key**: Based on sheet name (e.g., "July-2025")
@@ -721,9 +791,17 @@ All errors follow this format:
 ### JavaScript (Fetch API)
 
 ```javascript
+// Check authentication
+async function checkAuth(apiKey) {
+  const res = await fetch("http://localhost:5000/api/v1/check-auth", {
+    headers: { "X-API-KEY": apiKey },
+  });
+  return res.json();
+}
+
 // Log SMS transaction
 async function logSMS(smsText, date, apiKey) {
-  const response = await fetch("http://localhost:5000/api/v1/transactions", {
+  const response = await fetch("http://localhost:5000/api/v1/log-sms", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -741,9 +819,9 @@ async function logSMS(smsText, date, apiKey) {
 
 // Get spending statistics
 async function getSpendingStats(apiKey, monthYear) {
-  const url = monthYear
-    ? `http://localhost:5000/api/v1/stats/${monthYear}`
-    : "http://localhost:5000/api/v1/stats";
+  const url = `http://localhost:5000/api/v1/stats?month_year=${encodeURIComponent(
+    monthYear
+  )}`;
 
   const response = await fetch(url, {
     headers: {
@@ -761,9 +839,16 @@ async function getSpendingStats(apiKey, monthYear) {
 import requests
 import json
 
+# Check authentication
+def check_auth(api_key):
+  url = 'http://localhost:5000/api/v1/check-auth'
+  headers = {'X-API-KEY': api_key}
+  response = requests.get(url, headers=headers)
+  return response.json()
+
 # Log SMS transaction
 def log_sms(sms_text, api_key, date=None):
-    url = 'http://localhost:5000/api/v1/transactions'
+  url = 'http://localhost:5000/api/v1/log-sms'
     headers = {'X-API-KEY': api_key}
     payload = {'text': sms_text}
     if date:
@@ -775,10 +860,7 @@ def log_sms(sms_text, api_key, date=None):
 # Get spending statistics
 def get_spending_stats(api_key, month_year=None):
     headers = {'X-API-KEY': api_key}
-    if month_year:
-        url = f'http://localhost:5000/api/v1/stats/{month_year}'
-    else:
-        url = 'http://localhost:5000/api/v1/stats'
+  url = f'http://localhost:5000/api/v1/stats?month_year={month_year}'
 
     response = requests.get(url, headers=headers)
     return response.json()
@@ -791,12 +873,13 @@ def get_spending_stats(api_key, month_year=None):
 ### Using curl
 
 ```bash
-# Test all endpoints
+# Test key endpoints
 curl http://localhost:5000/health
+curl -H "X-API-KEY: your-api-key-here" http://localhost:5000/api/v1/check-auth
 curl -X POST http://localhost:5000/api/v1/parse-sms -H "Content-Type: application/json" -H "X-API-KEY: your-api-key-here" -d '{"text": "Test SMS"}'
-curl -X POST http://localhost:5000/api/v1/transactions -H "Content-Type: application/json" -H "X-API-KEY: your-api-key-here" -d '{"text": "Test SMS", "date": "2025-07-14T10:30:00"}'
-curl -H "X-API-KEY: your-api-key-here" http://localhost:5000/api/v1/sheets/July-2025
-curl -H "X-API-KEY: your-api-key-here" http://localhost:5000/api/v1/stats/July-2025
+curl -X POST http://localhost:5000/api/v1/log-sms -H "Content-Type: application/json" -H "X-API-KEY: your-api-key-here" -d '{"text": "Test SMS", "date": "2025-07-14T10:30:00"}'
+curl -H "X-API-KEY: your-api-key-here" "http://localhost:5000/api/v1/sheets?month_year=July-2025"
+curl -H "X-API-KEY: your-api-key-here" "http://localhost:5000/api/v1/stats?month_year=July-2025"
 ```
 
 ### Using Python Test Script

@@ -489,4 +489,19 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
+## Updated Endpoints Cheat Sheet
+
+- Health: GET `/health` (no auth)
+- Check Auth: GET `/api/v1/check-auth` (requires `X-API-KEY`)
+- Parse SMS (no write): POST `/api/v1/parse-sms` JSON `{ text }`
+- Log SMS to Sheets: POST `/api/v1/log-sms` JSON `{ text, date }`
+- Get Sheet Info: GET `/api/v1/sheets?month_year=July-2025`
+- Get Monthly Stats: GET `/api/v1/stats?month_year=July-2025`
+- Add Transaction: POST `/api/v1/transactions` JSON `{ date, transaction_data{...} }`
+- Get Transactions by Date: GET `/api/v1/transactions?date=YYYY-MM-DD`
+- Update Transaction: PATCH `/api/v1/transactions`
+- Delete Transaction: DELETE `/api/v1/transactions`
+
+See `endpoints.md` for detailed request/response examples.
+
 **Happy tracking! 🎉**

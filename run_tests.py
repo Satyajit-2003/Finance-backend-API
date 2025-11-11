@@ -258,7 +258,7 @@ class ComprehensiveTestSuite:
             transaction_info = get_transaction_info(test_sms)
             if transaction_info:
                 transaction_data = transaction_info.to_dict()
-                success = self.sheet_manager.insert_transaction_data(
+                success, _row = self.sheet_manager.insert_transaction_data(
                     transaction_data, test_date
                 )
 

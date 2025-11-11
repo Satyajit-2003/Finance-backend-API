@@ -360,7 +360,6 @@ def get_monthly_spend_stats():
 
         # Get spending statistics
         stats = sheet_manager.get_month_spends(month_name, year)
-        print(stats)
 
         if "error" in stats:
             return (
@@ -518,7 +517,10 @@ def log_sms_transaction():
                     {
                         "success": True,
                         "message": "SMS does not contain valid transaction information",
-                        "parsed_data": transaction_data,
+                        "data": {
+                            "transaction_data": transaction_data,
+                            "row_index": -1,
+                        },
                     }
                 ),
                 200,
@@ -539,17 +541,17 @@ def log_sms_transaction():
             )
 
         # Insert into Google Sheets
-        success = sheet_manager.insert_transaction_data(transaction_data, date)
+        success, row_index = sheet_manager.insert_transaction_data(
+            transaction_data, date
+        )
 
         if success:
-            sheet_url = sheet_manager.get_sheet_url(date)
             response = {
                 "success": True,
                 "message": "Transaction logged successfully",
                 "data": {
                     "transaction_data": transaction_data,
-                    "date": date.isoformat(),
-                    "sheet_url": sheet_url,
+                    "row_index": row_index,
                 },
             }
             logger.info(f"Transaction logged successfully for date: {date}")
@@ -596,10 +598,10 @@ def add_transaction():
     Expected JSON payload:
     {
         "date": "2025-09-05T14:30:00",  # ISO format
-        "transaction_data": {
+        "transaction_item": {
             "Amount": "150.00", // Required
             "Type": "Grocery",
-            "Account": "ACCOUNT|CARD - XXXX"
+            "Account": "ACCOUNT|CARD - XXXX",
             "Friend Split": "75.00",
             "Notes": "Weekly shopping"
         }
@@ -611,19 +613,19 @@ def add_transaction():
 
         data = request.get_json()
         date_str = data.get("date")
-        transaction_data = data.get("transaction_data")
+        transaction_item = data.get("transaction_item")
 
         if not date_str:
             raise BadRequest("'date' field is required")
 
-        if not transaction_data:
-            raise BadRequest("'transaction_data' field is required")
+        if not transaction_item:
+            raise BadRequest("'transaction_item' field is required")
 
-        if not isinstance(transaction_data, dict):
-            raise BadRequest("'transaction_data' must be a JSON object")
+        if not isinstance(transaction_item, dict):
+            raise BadRequest("'transaction_item' must be a JSON object")
 
-        if "Amount" not in transaction_data:
-            raise BadRequest("'Amount' field is required in 'transaction_data'")
+        if "Amount" not in transaction_item:
+            raise BadRequest("'Amount' field is required in 'transaction_item'")
 
         if not sheet_manager:
             return (
@@ -646,8 +648,8 @@ def add_transaction():
             )
 
         # Insert into Google Sheets
-        success = sheet_manager.insert_transaction_data(
-            transaction_data, date, from_sms=False
+        success, row = sheet_manager.insert_transaction_data(
+            transaction_item, date, from_sms=False
         )
 
         if success:
@@ -656,7 +658,10 @@ def add_transaction():
                     {
                         "success": True,
                         "message": "Transaction added successfully",
-                        "data": {"transaction_data": transaction_data},
+                        "data": {
+                            "transaction_data": transaction_item,
+                            "row_index": row,
+                        },
                     }
                 ),
                 201,

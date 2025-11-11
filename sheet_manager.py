@@ -404,7 +404,7 @@ class SheetManager:
                 self.logger.error(
                     "Google services not initialized. Please check credentials."
                 )
-                return False
+                return False, -1
 
             # Get or create monthly sheet
             sheet_id = self.get_or_create_monthly_sheet(date)
@@ -434,11 +434,11 @@ class SheetManager:
             self.logger.info(
                 f"Transaction data inserted into '{sheet_name}' at row {vacant_row}"
             )
-            return True
+            return True, vacant_row
 
         except Exception as e:
             self.logger.error(f"Error inserting transaction data: {e}")
-            return False
+            return False, -1
 
     def _prepare_flattened_row_data(
         self, transaction_data: Dict[str, Any], date: datetime, sheet_name: str

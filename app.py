@@ -66,6 +66,19 @@ def authenticate_api_request():
                 500,
             )
 
+        if not sheet_manager:
+            logger.error("Sheet Manager not initialized")
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Service unavailable",
+                        "message": "Google Sheets service is not available",
+                    }
+                ),
+                503,
+            )
+
         # Get the API key from headers
         provided_key = request.headers.get("X-API-KEY")
 
@@ -128,6 +141,9 @@ def health_check():
 @app.route(f"{AppConfig.API_PREFIX}/check-auth", methods=["GET"])
 def check_auth():
     """Endpoint to check if API authentication is working."""
+    curr_month_sheet_url = (
+        sheet_manager.get_sheet_url(datetime.now()) if sheet_manager else None
+    )
     return (
         jsonify(
             {
@@ -135,6 +151,7 @@ def check_auth():
                 "message": "API authentication successful",
                 "data": {
                     "timestamp": datetime.now().isoformat(),
+                    "sheet_url": curr_month_sheet_url,
                     "version": AppConfig.API_VERSION,
                 },
             }
@@ -343,6 +360,7 @@ def get_monthly_spend_stats():
 
         # Get spending statistics
         stats = sheet_manager.get_month_spends(month_name, year)
+        print(stats)
 
         if "error" in stats:
             return (

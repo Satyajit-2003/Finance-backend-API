@@ -85,6 +85,23 @@ class SheetManager:
             month=date.strftime("%B"), year=date.year
         )
 
+    def _format_sheet_timestamp(self, date: datetime) -> str:
+        """Format datetime for storage in sheet Date column."""
+        return date.strftime("%Y-%m-%d:%H:%M")
+
+    def _extract_date_key(self, date_value: str) -> Optional[str]:
+        """Extract YYYY-MM-DD key from timestamp or date-only values."""
+        if not date_value:
+            return None
+
+        for fmt in ("%Y-%m-%d:%H:%M", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(date_value.strip(), fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+
+        return None
+
     def _create_new_sheet(self, sheet_name: str) -> str:
         """Create a new sheet within the shared workbook."""
         try:
@@ -445,6 +462,7 @@ class SheetManager:
     ) -> List[str]:
         """Prepare flattened row data for insertion."""
         account = transaction_data.get("Account", "ACCOUNT - 1234")
+        merchant = transaction_data.get("Merchant", "Manual - debit")
         amount = transaction_data.get("Amount", "0")
         type_ = transaction_data.get("Type", "Select")
         friend_split = transaction_data.get("Friend Split", "0")
@@ -455,8 +473,8 @@ class SheetManager:
 
         # Prepare row data according to new 8-column structure
         row_data = [
-            date.strftime("%Y-%m-%d"),  # Date (Column A)
-            "Manual - debit",  # Description (Column B - default for manual entry)
+            self._format_sheet_timestamp(date),  # Date (Column A)
+            merchant,  # Description (Column B - default for manual entry)
             amount,  # Amount (Column C)
             type_,  # Type (Column D - dropdown)
             account,  # Account (Column E)
@@ -499,7 +517,7 @@ class SheetManager:
 
         # Prepare row data according to new 8-column structure
         row_data = [
-            date.strftime("%Y-%m-%d"),  # Date (Column A)
+            self._format_sheet_timestamp(date),  # Date (Column A)
             f"{transaction.get('merchant', '')} - {trans_type}",  # Description (Column B)
             amount,  # Amount (Column C)
             category,  # Type (Column D - dropdown)
@@ -628,7 +646,8 @@ class SheetManager:
 
                 # Check if date matches
                 row_date = row[0] if row else ""
-                if row_date == date_str:
+                row_date_key = self._extract_date_key(row_date)
+                if row_date_key == date_str:
                     # Create transaction dictionary
                     transaction = {}
                     for col_index, header in enumerate(SheetConfig.HEADER_ROW):

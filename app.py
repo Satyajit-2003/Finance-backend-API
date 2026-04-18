@@ -188,7 +188,8 @@ def test_parser():
             transaction_info = get_transaction_info(text)
             transaction_data = transaction_info.to_dict() if transaction_info else {}
 
-            is_valid = ValidationRules.is_valid_transaction(transaction_data, text)
+            is_valid = ValidationRules.is_valid_transaction(
+                transaction_data, text)
 
             return (
                 jsonify(
@@ -235,7 +236,8 @@ def test_parser():
         logger.error(f"Unexpected error in test_parser: {e}")
         return (
             jsonify(
-                {"success": False, "error": str(e), "message": "Internal server error"}
+                {"success": False, "error": str(
+                    e), "message": "Internal server error"}
             ),
             500,
         )
@@ -261,7 +263,8 @@ def get_sheet_info():
             # Create datetime for the first day of the month
             date = datetime.strptime(f"{month_name} {year}", "%B %Y")
         except (ValueError, IndexError):
-            raise BadRequest("Invalid month-year format. Use format: 'July-2025'")
+            raise BadRequest(
+                "Invalid month-year format. Use format: 'July-2025'")
 
         if not sheet_manager:
             return (
@@ -310,7 +313,8 @@ def get_sheet_info():
     except BadRequest as e:
         logger.warning(f"Bad request in get_sheet_info: {e}")
         return (
-            jsonify({"success": False, "error": str(e), "message": "Bad request"}),
+            jsonify({"success": False, "error": str(
+                e), "message": "Bad request"}),
             400,
         )
 
@@ -318,7 +322,8 @@ def get_sheet_info():
         logger.error(f"Unexpected error in get_sheet_info: {e}")
         return (
             jsonify(
-                {"success": False, "error": str(e), "message": "Internal server error"}
+                {"success": False, "error": str(
+                    e), "message": "Internal server error"}
             ),
             500,
         )
@@ -356,7 +361,8 @@ def get_monthly_spend_stats():
             # Validate the month name
             datetime.strptime(f"{month_name} {year}", "%B %Y")
         except (ValueError, IndexError):
-            raise BadRequest("Invalid month-year format. Use format: 'July-2025'")
+            raise BadRequest(
+                "Invalid month-year format. Use format: 'July-2025'")
 
         # Get spending statistics
         stats = sheet_manager.get_month_spends(month_name, year)
@@ -413,14 +419,17 @@ def get_monthly_spend_stats():
     except BadRequest as e:
         logger.warning(f"Bad request in get_monthly_spend_stats_by_month: {e}")
         return (
-            jsonify({"success": False, "error": str(e), "message": "Bad request"}),
+            jsonify({"success": False, "error": str(
+                e), "message": "Bad request"}),
             400,
         )
     except Exception as e:
-        logger.error(f"Unexpected error in get_monthly_spend_stats_by_month: {e}")
+        logger.error(
+            f"Unexpected error in get_monthly_spend_stats_by_month: {e}")
         return (
             jsonify(
-                {"success": False, "error": str(e), "message": "Internal server error"}
+                {"success": False, "error": str(
+                    e), "message": "Internal server error"}
             ),
             500,
         )
@@ -511,7 +520,8 @@ def log_sms_transaction():
 
         # Validate parsed transaction
         if not ValidationRules.is_valid_transaction(transaction_data, text):
-            logger.warning(f"Invalid transaction data from SMS: {text[:50]}...")
+            logger.warning(
+                f"Invalid transaction data from SMS: {text[:50]}...")
             return (
                 jsonify(
                     {
@@ -572,7 +582,8 @@ def log_sms_transaction():
     except BadRequest as e:
         logger.warning(f"Bad request: {e}")
         return (
-            jsonify({"success": False, "error": str(e), "message": "Bad request"}),
+            jsonify({"success": False, "error": str(
+                e), "message": "Bad request"}),
             400,
         )
 
@@ -625,7 +636,8 @@ def add_transaction():
             raise BadRequest("'transaction_item' must be a JSON object")
 
         if "Amount" not in transaction_item:
-            raise BadRequest("'Amount' field is required in 'transaction_item'")
+            raise BadRequest(
+                "'Amount' field is required in 'transaction_item'")
 
         if not sheet_manager:
             return (
@@ -681,14 +693,16 @@ def add_transaction():
     except BadRequest as e:
         logger.warning(f"Bad request in add_transaction: {e}")
         return (
-            jsonify({"success": False, "error": str(e), "message": "Bad request"}),
+            jsonify({"success": False, "error": str(
+                e), "message": "Bad request"}),
             400,
         )
     except Exception as e:
         logger.error(f"Unexpected error in add_transaction: {e}")
         return (
             jsonify(
-                {"success": False, "error": str(e), "message": "Internal server error"}
+                {"success": False, "error": str(
+                    e), "message": "Internal server error"}
             ),
             500,
         )
@@ -700,6 +714,7 @@ def get_transactions_by_date():
     Get all transactions for a specific date.
 
     URL format: /api/v1/transactions?date=2025-09-05
+    Also supports: /api/v1/transactions?date=2025-09-05:14:30
 
     Returns all transactions for the specified date.
     """
@@ -719,11 +734,26 @@ def get_transactions_by_date():
         # Validate and parse date
         if "date" not in request.args:
             raise BadRequest("'date' query parameter is required")
+
+        date = request.args.get("date")
+        if not date:
+            raise BadRequest("'date' query parameter is required")
+
         try:
-            date = request.args.get("date")
-            parsed_date = datetime.strptime(date, "%Y-%m-%d")
+            parsed_date = None
+            for fmt in ("%Y-%m-%d:%H:%M", "%Y-%m-%d"):
+                try:
+                    parsed_date = datetime.strptime(date, fmt)
+                    break
+                except ValueError:
+                    continue
+
+            if parsed_date is None:
+                raise ValueError("invalid date format")
         except ValueError:
-            raise BadRequest("Invalid date format. Use format: 'YYYY-MM-DD'")
+            raise BadRequest(
+                "Invalid date format. Use 'YYYY-MM-DD' or 'YYYY-MM-DD:HH:MM'"
+            )
 
         # Get transactions for the date
         transactions = sheet_manager.get_transactions_by_date(parsed_date)
@@ -750,14 +780,16 @@ def get_transactions_by_date():
     except BadRequest as e:
         logger.warning(f"Bad request in get_transactions_by_date: {e}")
         return (
-            jsonify({"success": False, "error": str(e), "message": "Bad request"}),
+            jsonify({"success": False, "error": str(
+                e), "message": "Bad request"}),
             400,
         )
     except Exception as e:
         logger.error(f"Unexpected error in get_transactions_by_date: {e}")
         return (
             jsonify(
-                {"success": False, "error": str(e), "message": "Internal server error"}
+                {"success": False, "error": str(
+                    e), "message": "Internal server error"}
             ),
             500,
         )
@@ -838,7 +870,8 @@ def update_transaction():
                 )
 
         if not field_updates:
-            raise BadRequest("No valid field updates provided in 'updates' object")
+            raise BadRequest(
+                "No valid field updates provided in 'updates' object")
 
         # Perform update
         success = sheet_manager.update_transaction_fields(
@@ -866,7 +899,8 @@ def update_transaction():
                 200,
             )
         else:
-            logger.error(f"Failed to update transaction: {sheet_name} row {row_index}")
+            logger.error(
+                f"Failed to update transaction: {sheet_name} row {row_index}")
             return (
                 jsonify(
                     {
@@ -881,14 +915,16 @@ def update_transaction():
     except BadRequest as e:
         logger.warning(f"Bad request in update_transaction: {e}")
         return (
-            jsonify({"success": False, "error": str(e), "message": "Bad request"}),
+            jsonify({"success": False, "error": str(
+                e), "message": "Bad request"}),
             400,
         )
     except Exception as e:
         logger.error(f"Unexpected error in update_transaction: {e}")
         return (
             jsonify(
-                {"success": False, "error": str(e), "message": "Internal server error"}
+                {"success": False, "error": str(
+                    e), "message": "Internal server error"}
             ),
             500,
         )
@@ -972,7 +1008,8 @@ def delete_transaction():
                 200,
             )
         else:
-            logger.error(f"Failed to delete transaction: {sheet_name} row {row_index}")
+            logger.error(
+                f"Failed to delete transaction: {sheet_name} row {row_index}")
             return (
                 jsonify(
                     {
@@ -987,14 +1024,16 @@ def delete_transaction():
     except BadRequest as e:
         logger.warning(f"Bad request in delete_transaction: {e}")
         return (
-            jsonify({"success": False, "error": str(e), "message": "Bad request"}),
+            jsonify({"success": False, "error": str(
+                e), "message": "Bad request"}),
             400,
         )
     except Exception as e:
         logger.error(f"Unexpected error in delete_transaction: {e}")
         return (
             jsonify(
-                {"success": False, "error": str(e), "message": "Internal server error"}
+                {"success": False, "error": str(
+                    e), "message": "Internal server error"}
             ),
             500,
         )
@@ -1015,7 +1054,8 @@ def not_found(error):
     """Handle 404 errors."""
     return (
         jsonify(
-            {"success": False, "error": "Not found", "message": "Endpoint not found"}
+            {"success": False, "error": "Not found",
+                "message": "Endpoint not found"}
         ),
         404,
     )

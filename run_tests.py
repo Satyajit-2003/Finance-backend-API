@@ -605,7 +605,7 @@ class ComprehensiveTestSuite:
         unique_amount = f"{time.time():.2f}"  # Use timestamp as unique amount
         payload = {
             "date": "2025-09-05T14:30:00",
-            "transaction_data": {
+            "transaction_item": {
                 "Amount": unique_amount,
                 "Type": "Test",
                 "Notes": "Direct add test",
@@ -622,7 +622,7 @@ class ComprehensiveTestSuite:
                 data = response.json()
                 if data.get("success"):
                     print("✅ Add transaction endpoint working")
-                    print(f"   Added amount: {payload['transaction_data']['Amount']}")
+                    print(f"   Added amount: {payload['transaction_item']['Amount']}")
                     self.test_results["api"]["passed"] += 1
                 else:
                     print("❌ Add transaction endpoint returned unsuccessful response")

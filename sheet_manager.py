@@ -645,8 +645,11 @@ class SheetManager:
                     row.append("")
 
                 # Check if date matches
-                row_date = row[0] if row else ""
+                header_index = SheetConfig.HEADER_ROW.index(SheetConfig.HD_DATE)
+                category_index = SheetConfig.HEADER_ROW.index(SheetConfig.HD_TYPE)
+                row_date = row[header_index] if row else ""
                 row_date_key = self._extract_date_key(row_date)
+                category = row[category_index] if row else ""
                 if row_date_key == date_str:
                     # Create transaction dictionary
                     transaction = {}
@@ -823,6 +826,43 @@ class SheetManager:
         except Exception as e:
             self.logger.error(f"Error invalidating cache: {e}")
 
+    def _get_uncategorized_spend_dates(self, month: str, year: int) -> List[str]:
+        """Get list of dates with uncategorized spends for a specific month and year."""
+        try:
+            sheet_name = AppConfig.SHEET_NAME_FORMAT.format(month=month, year=year)
+
+            if not self._sheet_exists(sheet_name):
+                return []
+
+            range_name = f"{sheet_name}!A2:{chr(64 + len(SheetConfig.HEADER_ROW))}"
+            result = (
+                self.service.spreadsheets()
+                .values()
+                .get(spreadsheetId=self.shared_workbook_id, range=range_name)
+                .execute()
+            )
+
+            values = result.get("values", [])
+            uncategorized_dates = set()
+
+            date_col_index = SheetConfig.HEADER_ROW.index(SheetConfig.HD_DATE)
+            type_col_index = SheetConfig.HEADER_ROW.index(SheetConfig.HD_TYPE)
+
+            for row in values:
+                if len(row) > max(date_col_index, type_col_index):
+                    category = row[type_col_index]
+                    if category not in TransactionTypes.TYPES_WITH_COLORS: 
+                        date_value = row[date_col_index]
+                        date_key = self._extract_date_key(date_value)
+                        if date_key:
+                            uncategorized_dates.add(date_key)
+
+            return sorted(uncategorized_dates)
+
+        except Exception as e:
+            self.logger.error(f"Error getting uncategorized spend dates: {e}")
+            return []
+    
     def get_month_spends(self, month: str, year: int) -> Dict[str, Any]:
         """Get total spends for a specific month and year."""
         try:

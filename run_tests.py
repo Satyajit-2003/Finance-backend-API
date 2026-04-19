@@ -11,10 +11,16 @@ Usage:
     python run_tests.py --quick            # Run quick tests (no network)
 """
 
+import dotenv
+from config import ValidationRules
+from sms_parser import get_transaction_info
+from config import get_env_variable
+from sheet_manager import SheetManager
 import os
 import sys
 import json
 import time
+import random
 import requests
 import csv
 import argparse
@@ -25,11 +31,6 @@ from pprint import pprint
 # Add the current directory to Python path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from sheet_manager import SheetManager
-from config import get_env_variable
-from sms_parser import get_transaction_info
-from config import ValidationRules
-import dotenv
 
 dotenv.load_dotenv()
 
@@ -238,14 +239,17 @@ class ComprehensiveTestSuite:
                 return False
 
             print("✅ Google Sheets service initialized successfully")
-            print(f"📄 Using shared workbook: {self.sheet_manager.shared_workbook_id}")
+            print(
+                f"📄 Using shared workbook: {self.sheet_manager.shared_workbook_id}")
             self.test_results["sheets"]["passed"] += 1
 
             # Test creating a monthly sheet
             test_date = datetime(2025, 7, 14)
-            print(f"\n🔍 Testing sheet creation for {test_date.strftime('%B %Y')}...")
+            print(
+                f"\n🔍 Testing sheet creation for {test_date.strftime('%B %Y')}...")
 
-            sheet_id = self.sheet_manager.get_or_create_monthly_sheet(test_date)
+            sheet_id = self.sheet_manager.get_or_create_monthly_sheet(
+                test_date)
             print(f"✅ Sheet created/retrieved in workbook: {sheet_id}")
             self.test_results["sheets"]["passed"] += 1
 
@@ -359,7 +363,8 @@ class ComprehensiveTestSuite:
                     timestamp,
                 ) in self.sheet_manager.monthly_spends_cache.items():
                     cache_age = time.time() - timestamp
-                    print(f"   🔸 {sheet_name}: cached {cache_age:.1f} seconds ago")
+                    print(
+                        f"   🔸 {sheet_name}: cached {cache_age:.1f} seconds ago")
 
         except Exception as e:
             print(f"❌ Error testing spending stats: {e}")
@@ -417,10 +422,12 @@ class ComprehensiveTestSuite:
                         timeout=5,
                     )
                 else:
-                    response = requests.get(f"{self.base_url}{endpoint}", timeout=5)
+                    response = requests.get(
+                        f"{self.base_url}{endpoint}", timeout=5)
 
                 if response.status_code == 403:
-                    print(f"✅ {method} {endpoint} correctly requires authentication")
+                    print(
+                        f"✅ {method} {endpoint} correctly requires authentication")
                     self.test_results["auth"]["passed"] += 1
                 else:
                     print(
@@ -479,7 +486,8 @@ class ComprehensiveTestSuite:
                     print("❌ Wrong error message for invalid key")
                     self.test_results["auth"]["failed"] += 1
             else:
-                print(f"❌ Invalid key should return 403 (got {response.status_code})")
+                print(
+                    f"❌ Invalid key should return 403 (got {response.status_code})")
                 self.test_results["auth"]["failed"] += 1
         except Exception as e:
             print(f"❌ Invalid auth test error: {e}")
@@ -521,8 +529,155 @@ class ComprehensiveTestSuite:
         # Test transaction management endpoints
         self._test_transaction_management()
 
+        # Test uncategorized dates endpoint (month-wise)
+        self._test_uncategorized_dates_endpoint()
+
         # Test endpoint validation
         self._test_endpoint_validation()
+
+    def _test_uncategorized_dates_endpoint(self):
+        """Test uncategorized dates endpoint with backdated data and cleanup."""
+        print("\n🔍 Testing uncategorized dates endpoint...")
+
+        inserted_rows = []
+        expected_dates_by_month = {"July-2025": set(), "August-2025": set()}
+
+        try:
+            random.seed(int(time.time()))
+
+            # Step 1: Insert uncategorized test transactions for backdated months.
+            print("  ↳ 1. Inserting backdated uncategorized transactions...")
+            for month_year, month_num in (("July-2025", 7), ("August-2025", 8)):
+                random_days = random.sample(range(5, 26), 2)
+                for idx, day in enumerate(random_days, start=1):
+                    date_str = f"2025-{month_num:02d}-{day:02d}"
+                    unique_amount = f"{200 + (month_num * 10) + idx + random.random():.2f}"
+
+                    payload = {
+                        "date": f"{date_str}T11:30:00",
+                        "transaction_item": {
+                            "Amount": unique_amount,
+                            "Type": "Select",
+                            "Notes": f"Uncategorized endpoint test {month_year} {date_str}",
+                            "Account": "ACCOUNT - 9999",
+                        },
+                    }
+
+                    response = requests.post(
+                        f"{self.base_url}/api/v1/transactions",
+                        headers=self.auth_headers,
+                        json=payload,
+                        timeout=15,
+                    )
+
+                    if response.status_code == 201:
+                        data = response.json().get("data", {})
+                        row_index = data.get("row_index")
+                        if row_index:
+                            inserted_rows.append(
+                                {
+                                    "sheet_name": month_year,
+                                    "row_index": row_index,
+                                }
+                            )
+                            expected_dates_by_month[month_year].add(date_str)
+                            print(
+                                f"    ✅ Inserted {month_year} transaction on {date_str} (row {row_index})"
+                            )
+                        else:
+                            print(
+                                f"    ❌ Missing row_index in insert response for {date_str}"
+                            )
+                            self.test_results["api"]["failed"] += 1
+                    else:
+                        print(
+                            f"    ❌ Insert failed for {date_str}: {response.status_code}"
+                        )
+                        print(f"       Response: {response.text}")
+                        self.test_results["api"]["failed"] += 1
+
+            if not inserted_rows:
+                print("    ❌ No rows inserted; skipping endpoint assertions")
+                self.test_results["api"]["failed"] += 1
+                return
+
+            # Step 2: Verify endpoint month-wise.
+            print("  ↳ 2. Verifying uncategorized dates by month...")
+            for month_year in ("July-2025", "August-2025"):
+                response = requests.get(
+                    f"{self.base_url}/api/v1/transactions/uncategorized?month_year={month_year}",
+                    headers={"X-API-KEY": self.api_key},
+                    timeout=15,
+                )
+
+                if response.status_code != 200:
+                    print(
+                        f"    ❌ Endpoint failed for {month_year}: {response.status_code}"
+                    )
+                    print(f"       Response: {response.text}")
+                    self.test_results["api"]["failed"] += 1
+                    continue
+
+                body = response.json()
+                data = body.get("data", {})
+                returned_dates = set(data.get("uncategorized_dates", []))
+                expected_dates = expected_dates_by_month[month_year]
+
+                if expected_dates.issubset(returned_dates):
+                    print(
+                        f"    ✅ {month_year}: endpoint returned expected dates {sorted(expected_dates)}"
+                    )
+                    self.test_results["api"]["passed"] += 1
+                else:
+                    print(
+                        f"    ❌ {month_year}: missing expected dates. Expected subset={sorted(expected_dates)}, got={sorted(returned_dates)}"
+                    )
+                    self.test_results["api"]["failed"] += 1
+
+        except requests.exceptions.RequestException as e:
+            print(f"    ❌ Uncategorized endpoint test connection error: {e}")
+            self.test_results["api"]["failed"] += 1
+        except Exception as e:
+            print(f"    ❌ Uncategorized endpoint test error: {e}")
+            self.test_results["api"]["failed"] += 1
+        finally:
+            # Step 3: Cleanup inserted rows (delete in descending row order per sheet).
+            print("  ↳ 3. Cleaning up inserted uncategorized test rows...")
+            cleanup_failed = False
+            for row in sorted(
+                inserted_rows,
+                key=lambda r: (r["sheet_name"], r["row_index"]),
+                reverse=True,
+            ):
+                try:
+                    delete_resp = requests.delete(
+                        f"{self.base_url}/api/v1/transactions",
+                        headers=self.auth_headers,
+                        json={
+                            "sheet_name": row["sheet_name"],
+                            "row_index": row["row_index"],
+                        },
+                        timeout=15,
+                    )
+                    if delete_resp.status_code == 200:
+                        print(
+                            f"    ✅ Deleted test row {row['row_index']} from {row['sheet_name']}"
+                        )
+                    else:
+                        cleanup_failed = True
+                        print(
+                            f"    ❌ Failed to delete row {row['row_index']} from {row['sheet_name']}: {delete_resp.status_code}"
+                        )
+                except Exception as e:
+                    cleanup_failed = True
+                    print(
+                        f"    ❌ Cleanup error for row {row['row_index']} in {row['sheet_name']}: {e}"
+                    )
+
+            if cleanup_failed:
+                self.test_results["api"]["failed"] += 1
+            else:
+                self.test_results["api"]["passed"] += 1
 
     def _test_health_endpoint(self):
         """Test health check endpoint."""
@@ -622,13 +777,15 @@ class ComprehensiveTestSuite:
                 data = response.json()
                 if data.get("success"):
                     print("✅ Add transaction endpoint working")
-                    print(f"   Added amount: {payload['transaction_item']['Amount']}")
+                    print(
+                        f"   Added amount: {payload['transaction_item']['Amount']}")
                     self.test_results["api"]["passed"] += 1
                 else:
                     print("❌ Add transaction endpoint returned unsuccessful response")
                     self.test_results["api"]["failed"] += 1
             else:
-                print(f"❌ Add transaction endpoint failed: {response.status_code}")
+                print(
+                    f"❌ Add transaction endpoint failed: {response.status_code}")
                 print(f"   Response: {response.text}")
                 self.test_results["api"]["failed"] += 1
         except requests.exceptions.RequestException as e:
@@ -690,7 +847,8 @@ class ComprehensiveTestSuite:
             if response.status_code == 200:
                 print("✅ Parser test endpoint working")
                 result = response.json()
-                print(f"📊 Valid transaction: {result['data']['is_valid_transaction']}")
+                print(
+                    f"📊 Valid transaction: {result['data']['is_valid_transaction']}")
                 self.test_results["api"]["passed"] += 1
             else:
                 print(f"❌ Parser test endpoint failed: {response.status_code}")
@@ -786,7 +944,8 @@ class ComprehensiveTestSuite:
             if response.status_code in [200, 201]:
                 print("    ✅ Test transaction logged successfully")
             else:
-                print(f"    ❌ Failed to log test transaction: {response.status_code}")
+                print(
+                    f"    ❌ Failed to log test transaction: {response.status_code}")
                 self.test_results["api"]["failed"] += 1
                 return
 
@@ -815,7 +974,8 @@ class ComprehensiveTestSuite:
                 if test_transactions:
                     test_row = test_transactions[0]["row_index"]
                     print(f"    ✅ Found test transaction at row {test_row}")
-                    print(f"       Amount: {test_transactions[0].get('Amount')}")
+                    print(
+                        f"       Amount: {test_transactions[0].get('Amount')}")
                     print(
                         f"       Description: {test_transactions[0].get('Description', 'N/A')}"
                     )
@@ -825,7 +985,8 @@ class ComprehensiveTestSuite:
                         f"       Looking for: Amount={unique_amount}, Date={test_date}"
                     )
                     if transactions:
-                        print(f"       Available transactions: {len(transactions)}")
+                        print(
+                            f"       Available transactions: {len(transactions)}")
                         # Show last few transactions for debugging
                         for i, t in enumerate(transactions[-3:], 1):
                             print(
@@ -834,7 +995,8 @@ class ComprehensiveTestSuite:
                     self.test_results["api"]["failed"] += 1
                     return
             else:
-                print(f"    ❌ Failed to get transactions: {response.status_code}")
+                print(
+                    f"    ❌ Failed to get transactions: {response.status_code}")
                 self.test_results["api"]["failed"] += 1
                 return
 
@@ -922,7 +1084,8 @@ class ComprehensiveTestSuite:
             if response.status_code == 200:
                 data = response.json()
                 print("    ✅ DELETE endpoint working")
-                print(f"       Deleted row: {data['data']['deleted_row_index']}")
+                print(
+                    f"       Deleted row: {data['data']['deleted_row_index']}")
                 self.test_results["api"]["passed"] += 1
             else:
                 print(f"    ❌ DELETE endpoint failed: {response.status_code}")
@@ -970,7 +1133,8 @@ class ComprehensiveTestSuite:
             response = requests.patch(
                 f"{self.base_url}/api/v1/transactions",
                 headers=self.auth_headers,
-                json={"sheet_name": "September-2025", "updates": {"Type": "Test"}},
+                json={"sheet_name": "September-2025",
+                      "updates": {"Type": "Test"}},
                 timeout=10,
             )
             if response.status_code == 400 and "row_index" in response.json().get(
@@ -1068,12 +1232,15 @@ class ComprehensiveTestSuite:
         for i in range(3):
             try:
                 start_time = time.time()
-                response = requests.get(endpoint, headers=self.auth_headers, timeout=10)
+                response = requests.get(
+                    endpoint, headers=self.auth_headers, timeout=10)
                 end_time = time.time()
 
-                if response.status_code in [200, 404]:  # Both are valid responses
+                # Both are valid responses
+                if response.status_code in [200, 404]:
                     times.append(end_time - start_time)
-                    print(f"   Call {i+1}: {end_time - start_time:.3f} seconds")
+                    print(
+                        f"   Call {i+1}: {end_time - start_time:.3f} seconds")
                 else:
                     print(f"   Call {i+1}: Failed ({response.status_code})")
 
@@ -1362,7 +1529,8 @@ class ComprehensiveTestSuite:
                         print(f"   Version: {data['version']}")
                         self.test_results["extended"]["passed"] += 1
                     else:
-                        print(f"❌ Missing fields in health response data: {data}")
+                        print(
+                            f"❌ Missing fields in health response data: {data}")
                         print(f"   Expected fields: {required_fields}")
                         print(f"   Actual fields: {list(data.keys())}")
                         self.test_results["extended"]["failed"] += 1
@@ -1390,7 +1558,8 @@ class ComprehensiveTestSuite:
             if response.status_code == 200:
                 result = response.json()
                 required_fields = ["success", "data"]
-                data_fields = ["parsed_data", "is_valid_transaction", "original_text"]
+                data_fields = ["parsed_data",
+                               "is_valid_transaction", "original_text"]
 
                 if all(field in result for field in required_fields) and all(
                     field in result["data"] for field in data_fields
@@ -1438,13 +1607,15 @@ class ComprehensiveTestSuite:
                     ):
                         print("✅ Stats success response has correct format")
                         print(f"   Month: {result['data']['month_year']}")
-                        print(f"   Total spend: ₹{result['data']['total_spend']:.2f}")
+                        print(
+                            f"   Total spend: ₹{result['data']['total_spend']:.2f}")
                         print(
                             f"   Transaction count: {result['data']['transaction_count']}"
                         )
                         self.test_results["extended"]["passed"] += 1
                     else:
-                        print(f"❌ Incorrect stats success response format: {result}")
+                        print(
+                            f"❌ Incorrect stats success response format: {result}")
                         self.test_results["extended"]["failed"] += 1
                 else:  # 404
                     if not result.get("success") and "error" in result:
@@ -1452,7 +1623,8 @@ class ComprehensiveTestSuite:
                         print(f"   Error: {result['error']}")
                         self.test_results["extended"]["passed"] += 1
                     else:
-                        print(f"❌ Incorrect stats error response format: {result}")
+                        print(
+                            f"❌ Incorrect stats error response format: {result}")
                         self.test_results["extended"]["failed"] += 1
             else:
                 print(f"❌ Stats endpoint failed: {response.status_code}")
@@ -1466,8 +1638,10 @@ class ComprehensiveTestSuite:
         print("📊 COMPREHENSIVE TEST SUMMARY")
         print("=" * 80)
 
-        total_passed = sum(result["passed"] for result in self.test_results.values())
-        total_failed = sum(result["failed"] for result in self.test_results.values())
+        total_passed = sum(result["passed"]
+                           for result in self.test_results.values())
+        total_failed = sum(result["failed"]
+                           for result in self.test_results.values())
         total_tests = total_passed + total_failed
 
         print(f"📈 Overall Results:")

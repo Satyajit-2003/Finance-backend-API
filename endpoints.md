@@ -19,6 +19,7 @@ http://localhost:5000
 | `/api/v1/sheets?month_year=July-2025`  | GET    | Get sheet information             | X-API-KEY      |
 | `/api/v1/stats?month_year=July-2025`   | GET    | Get specific month spending stats | X-API-KEY      |
 | `/api/v1/transactions?date=YYYY-MM-DD` | GET    | Get transactions by date          | X-API-KEY      |
+| `/api/v1/transactions/uncategorized`   | GET    | Get uncategorized transactions    | X-API-KEY      |
 | `/api/v1/transactions`                 | POST   | Add transaction directly          | X-API-KEY      |
 | `/api/v1/transactions`                 | PATCH  | Update transaction fields         | X-API-KEY      |
 | `/api/v1/transactions`                 | DELETE | Delete transaction row            | X-API-KEY      |
@@ -224,7 +225,7 @@ curl -X POST http://localhost:5000/api/v1/log-sms \
 
 ---
 
-### 3. Test SMS Parser
+### 4. Test SMS Parser
 
 **Endpoint**: `POST /api/v1/parse-sms`
 
@@ -292,7 +293,7 @@ curl -X POST http://localhost:5000/api/v1/parse-sms \
 
 ---
 
-### 4. Get Sheet Information
+### 5. Get Sheet Information
 
 **Endpoint**: `GET /api/v1/sheets?month_year={month-year}`
 
@@ -346,7 +347,7 @@ curl "http://localhost:5000/api/v1/sheets?month_year=July-2025" -H "X-API-KEY: y
 
 ---
 
-### 5. Get Monthly Spending Statistics
+### 6. Get Monthly Spending Statistics
 
 **Endpoint**: `GET /api/v1/stats?month_year={month-year}`
 
@@ -454,7 +455,7 @@ curl "http://localhost:5000/api/v1/stats?month_year=July-2025" -H "X-API-KEY: yo
 
 ---
 
-### 6. Get Transactions by Date
+### 7. Get Transactions by Date
 
 **Endpoint**: `GET /api/v1/transactions?date={YYYY-MM-DD}`
 
@@ -527,7 +528,118 @@ curl -H "X-API-KEY: your-api-key" \
 
 ---
 
-### 7. Add Transaction Directly
+### 7. Get Uncategorized Transactions
+
+**Endpoint**: `GET /api/v1/transactions/uncategorized?month_year={Month-Year}`
+
+**Description**: Retrieve all uncategorized transactions for a specific month. Returns dates with transactions that have not been categorized (Type = "Select" or not in valid categories).
+
+**Parameters**:
+
+- **Query Parameter**: `month_year` (string) - Month-year in format `April-2026` (e.g., `April-2026`)
+
+**Headers**:
+
+```
+X-API-KEY: your-api-key-here
+```
+
+**Response** (200 - Success):
+
+```json
+{
+  "success": true,
+  "data": {
+    "month_year": "April-2026",
+    "uncategorized_dates": ["2026-04-01", "2026-04-05", "2026-04-12"],
+    "total_uncategorized": 5,
+    "transactions": [
+      {
+        "row_index": 3,
+        "Date": "2026-04-01:14:30",
+        "Description": "Amazon - debit",
+        "Amount": "500.00",
+        "Type": "Select",
+        "Account": "CARD - 1234",
+        "Friend Split": "0",
+        "Amount Borne": "500.00",
+        "Notes": ""
+      },
+      {
+        "row_index": 8,
+        "Date": "2026-04-05:10:15",
+        "Description": "Swiggy - debit",
+        "Amount": "250.00",
+        "Type": "Select",
+        "Account": "WALLET - Paytm",
+        "Friend Split": "125.00",
+        "Amount Borne": "125.00",
+        "Notes": "Dinner"
+      }
+    ],
+    "generated_at": "2026-04-19T14:30:00.000Z"
+  },
+  "message": "Found 5 uncategorized transactions for April-2026"
+}
+```
+
+**Response** (200 - No uncategorized transactions):
+
+```json
+{
+  "success": true,
+  "data": {
+    "month_year": "April-2026",
+    "uncategorized_dates": [],
+    "total_uncategorized": 0,
+    "transactions": []
+  },
+  "message": "No uncategorized transactions found for this month"
+}
+```
+
+**Error Responses**:
+
+**400 Bad Request** (Missing parameter):
+
+```json
+{
+  "success": false,
+  "error": "'month_year' query parameter is required",
+  "message": "Bad request"
+}
+```
+
+**400 Bad Request** (Invalid date format):
+
+```json
+{
+  "success": false,
+  "error": "Invalid month-year format. Use format: 'April-2026'",
+  "message": "Bad request"
+}
+```
+
+**503 Service Unavailable**:
+
+```json
+{
+  "success": false,
+  "error": "Service unavailable",
+  "message": "Google Sheets service is not available"
+}
+```
+
+**Example**:
+
+```bash
+curl -H "X-API-KEY: your-api-key" \
+     "http://localhost:5000/api/v1/transactions/uncategorized?month_year=April-2026"
+```
+
+---
+
+### 8. Add Transaction Directly
 
 **Endpoint**: `POST /api/v1/transactions`
 
@@ -571,7 +683,7 @@ X-API-KEY: your-api-key-here
 
 ---
 
-### 8. Update Transaction Fields
+### 9. Update Transaction Fields
 
 **Endpoint**: `PATCH /api/v1/transactions`
 
@@ -661,7 +773,7 @@ curl -X PATCH \
 
 ---
 
-### 9. Delete Transaction Row
+### 10. Delete Transaction Row
 
 **Endpoint**: `DELETE /api/v1/transactions`
 
@@ -820,7 +932,7 @@ async function logSMS(smsText, date, apiKey) {
 // Get spending statistics
 async function getSpendingStats(apiKey, monthYear) {
   const url = `http://localhost:5000/api/v1/stats?month_year=${encodeURIComponent(
-    monthYear
+    monthYear,
   )}`;
 
   const response = await fetch(url, {

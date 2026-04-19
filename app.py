@@ -795,6 +795,79 @@ def get_transactions_by_date():
         )
 
 
+@app.route(f"{AppConfig.API_PREFIX}/transactions/uncategorized", methods=["GET"])
+def get_uncategorized_transactions():
+    """
+    Get dates that have uncategorized transactions for a specific month.
+
+    URL format: /api/v1/transactions/uncategorized?month_year=April-2026
+    """
+    try:
+        if not sheet_manager:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Service unavailable",
+                        "message": "Google Sheets service is not available",
+                    }
+                ),
+                503,
+            )
+
+        if "month_year" not in request.args:
+            raise BadRequest("'month_year' query parameter is required")
+
+        month_year = request.args.get("month_year")
+        if not month_year:
+            raise BadRequest("'month_year' query parameter is required")
+
+        try:
+            month_name, year_str = month_year.split("-")
+            year = int(year_str)
+            datetime.strptime(f"{month_name} {year}", "%B %Y")
+        except (ValueError, IndexError):
+            raise BadRequest(
+                "Invalid month-year format. Use format: 'July-2025'")
+
+        uncategorized_dates = sheet_manager._get_uncategorized_spend_dates(
+            month_name, year
+        )
+
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "data": {
+                        "month_year": month_year,
+                        "uncategorized_dates": uncategorized_dates,
+                        "total": len(uncategorized_dates),
+                    },
+                    "message": f"Found {len(uncategorized_dates)} dates with uncategorized transactions for {month_year}",
+                }
+            ),
+            200,
+        )
+
+    except BadRequest as e:
+        logger.warning(f"Bad request in get_uncategorized_transactions: {e}")
+        return (
+            jsonify({"success": False, "error": str(
+                e), "message": "Bad request"}),
+            400,
+        )
+    except Exception as e:
+        logger.error(
+            f"Unexpected error in get_uncategorized_transactions: {e}")
+        return (
+            jsonify(
+                {"success": False, "error": str(
+                    e), "message": "Internal server error"}
+            ),
+            500,
+        )
+
+
 @app.route(f"{AppConfig.API_PREFIX}/transactions", methods=["PATCH"])
 def update_transaction():
     """
